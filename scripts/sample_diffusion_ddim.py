@@ -10,7 +10,7 @@ from torch.cuda import amp
 from pytorch_lightning import seed_everything
 
 import sys
-sys.path.append('/home/hice1/ywang4343/scratch/q-diffusion')  # Replace with the path to where `ddim` directory is located.
+sys.path.append('C:/Users/yifei/OneDrive/桌面/T-diffusion')  # Replace with the path to where `ddim` directory is located.
 
 from ddim.models.diffusion import Model
 from ddim.datasets import inverse_data_transform
@@ -112,6 +112,8 @@ class Diffusion(object):
 
     def sample(self):
         model = Model(self.config)
+        model1 = Model(self.config)
+        model2 = Model(self.config)
 
         # This used the pretrained DDPM model, see https://github.com/pesser/pytorch_diffusion
         if self.config.data.dataset == "CIFAR10":
@@ -123,14 +125,22 @@ class Diffusion(object):
         ckpt = get_ckpt_path(f"ema_{name}")
         logger.info("Loading checkpoint {}".format(ckpt))
         model.load_state_dict(torch.load(ckpt, map_location=self.device))
+        model1.load_state_dict(torch.load(ckpt, map_location=self.device))
+        model2.load_state_dict(torch.load(ckpt, map_location=self.device))
         
         model.to(self.device)
         model.eval()
+        model1.to(self.device)
+        model1.eval()
         assert(self.args.cond == False)
         if self.args.ptq:
             if self.args.quant_mode == 'qdiff':
                 wq_params = {'n_bits': args.weight_bit, 'channel_wise': True, 'scale_method': 'max'}
                 aq_params = {'n_bits': args.act_bit, 'symmetric': args.a_sym, 'channel_wise': False, 'scale_method': 'max', 'leaf_param': args.quant_act}
+                
+                wq_params1 = {'n_bits': args.weight_bit/2, 'channel_wise': True, 'scale_method': 'max'}
+                aq_params1 = {'n_bits': args.act_bit/2, 'symmetric': args.a_sym, 'channel_wise': False, 'scale_method': 'max', 'leaf_param': args.quant_act}
+                     
                 if self.args.resume:
                     logger.info('Load with min-max quick initialization')
                     wq_params['scale_method'] = 'max'
@@ -142,6 +152,18 @@ class Diffusion(object):
                     sm_abit=self.args.sm_abit)
                 qnn.to(self.device)
                 qnn.eval()
+
+                qnn1 = QuantModel(
+                    model=model1, weight_quant_params=wq_params1, act_quant_params=aq_params1, 
+                    sm_abit=self.args.sm_abit)
+                qnn1.to(self.device)
+                qnn1.eval()
+                
+                qnn2 = QuantModel(
+                    model=model2, weight_quant_params=wq_params, act_quant_params=aq_params, 
+                    sm_abit=self.args.sm_abit)
+                qnn2.to(self.device)
+                qnn2.eval()
 
                 if self.args.resume:
                     image_size = self.config.data.image_size
@@ -181,27 +203,11 @@ class Diffusion(object):
                         
                         # Store partitions (could also process directly here if desired)
                         partitions.append((partition_data, partition_timesteps))
-                    import os
-                    checkpoint_dir='recon_checkpoint_dir'
-                    os.makedirs(checkpoint_dir, exist_ok=True)
-                    checkpoint_path = os.path.join(checkpoint_dir, "recon_checkpoint.pth.tar")
-
-                    # Check if there's a checkpoint available
-                    if os.path.exists(checkpoint_path):
-                        
-                        checkpoint = self.load_checkpoint(checkpoint_path)
-                        checkpoint['dataset_partition']=0
-                        loaded_partition = checkpoint['dataset_partition']
-                        
-                        resume_cali_model(qnn, checkpoint_path,(partition_data[loaded_partition],partition_timesteps[loaded_partition]),resume_from_recon=True)
-
-                    else:
-                        loaded_partition=0
-                        start_block = 0
                     # Example of processing each partition
-                    for idx, (cali_xs, cali_ts) in enumerate(partitions,start=loaded_partition):
-                        logger.info("partitioned data idx: ",idx)
-                        logger.info("cali data size: ",cali_xs.shape,cali_ts.shape)
+                    models=[qnn,qnn1,qnn2]
+                    for idx, (cali_xs, cali_ts) in enumerate(partitions):
+                        qnn=models[idx]
+                        logger.info(f"loaded partition: {idx}---------------------------------")
                 # ----------------------added code end here------------------------------------
                         if self.args.resume_w:
                             resume_cali_model(qnn, self.args.cali_ckpt, cali_data, False, cond=False)
@@ -215,14 +221,12 @@ class Diffusion(object):
                         kwargs = dict(cali_data=cali_data, batch_size=self.args.cali_batch_size, 
                                     iters=self.args.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                                     warmup=0.2, act_quant=False, opt_mode='mse')
-
                         def recon_model(model):
                             """
                             Block reconstruction. For the first and last layers, we can only apply layer reconstruction.
                             """
-                            num_children = sum(1 for _ in model.named_children())
-                            for idx, (name, module) in enumerate(model.named_children(), start=start_block):
-                                logger.info(f"current running idx: ",idx,"out of ",num_children,"; module name: ",name)
+                            
+                            for idx_1, (name, module) in enumerate(model.named_children()):
                                 logger.info(f"{name} {isinstance(module, BaseQuantBlock)}")
                                 if isinstance(module, QuantModule):
                                     if module.ignore_reconstruction is True:
@@ -240,12 +244,6 @@ class Diffusion(object):
                                         block_reconstruction(qnn, module, **kwargs)
                                 else:
                                     recon_model(module)
-                                            # Save checkpoint
-                                self.save_checkpoint({
-                                    'model_state': model.state_dict(),
-                                    'start_block': idx_i + 1,  # next block to start from
-                                    'dataset_partition':idx
-                                }, checkpoint_path=checkpoint_path)
 
                         if not self.args.resume_w:
                             logger.info("Doing weight calibration")
@@ -289,20 +287,18 @@ class Diffusion(object):
                                         m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
                                     else:
                                         m.zero_point = nn.Parameter(m.zero_point)
-                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}.pth"))
+                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun.pth"))
+    
+                model=models[0]
+                if self.argsverbose:
+                    logger.info("quantized model")
+                    logger.info(model)
+                for model in models:
+                    model.eval()
+                self.sample_fid(models)
+            
 
-                model = qnn
-
-        model.to(self.device)
-        if self.args.verbose:
-            logger.info("quantized model")
-            logger.info(model)
-
-        model.eval()
-        self.sample_fid(model)
-        
-
-    def sample_fid(self, model):
+    def sample_fid(self, models):
         config = self.config
         img_id = len(glob.glob(f"{self.args.image_folder}/*"))
         logger.info(f"starting from image {img_id}")
@@ -330,7 +326,7 @@ class Diffusion(object):
                 )
 
                 with amp.autocast(enabled=False):
-                    x = self.sample_image(x, model,img_id,n_rounds)
+                    x = self.sample_image(x, models,img_id,n_rounds)
                 x = inverse_data_transform(config, x)
 
                 if img_id + x.shape[0] > self.args.max_images:
