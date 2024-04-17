@@ -132,6 +132,8 @@ class Diffusion(object):
         model.eval()
         model1.to(self.device)
         model1.eval()
+        model2.to(self.device)
+        model2.eval()
         assert(self.args.cond == False)
         if self.args.ptq:
             if self.args.quant_mode == 'qdiff':
@@ -169,7 +171,34 @@ class Diffusion(object):
                     image_size = self.config.data.image_size
                     channels = self.config.data.channels
                     cali_data = (torch.randn(1, channels, image_size, image_size), torch.randint(0, 1000, (1,)))
-                    resume_cali_model(qnn, args.cali_ckpt, cali_data, args.quant_act, "qdiff", cond=False)
+                    # Number of partitions
+                    cali_xs, cali_ts = cali_data
+                    x = 3
+
+                    # Calculate the number of samples per partition
+                    samples_per_partition = cali_xs.size(0) // x
+
+                    # List to hold each partition
+                    partitions = []
+
+                    # Split the dataset into x sections
+                    for i in range(x):
+                        start_idx = i * samples_per_partition
+                        if i == x - 1:
+                            # Ensure the last partition takes any remainder if not evenly divisible
+                            end_idx = cali_xs.size(0)
+                        else:
+                            end_idx = start_idx + samples_per_partition
+                        
+                        partition_data = cali_xs[start_idx:end_idx]
+                        partition_timesteps = cali_ts[start_idx:end_idx]
+                        
+                        # Store partitions (could also process directly here if desired)
+                        partitions.append((partition_data, partition_timesteps))
+                    print(partitions)
+                    resume_cali_model(qnn, 'output/samples/2024-04-17-05-10-26/ckpt_0_smallrun.pth', partitions[0], args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn1, 'output/samples/2024-04-17-05-10-26/ckpt_0_smallrun.pth', partitions[1], args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn2, args.cali_ckpt, partitions[2], args.quant_act, "qdiff", cond=False)
                 else:
                     logger.info(f"Sampling data from {self.args.cali_st} timesteps for calibration")
                     sample_data = torch.load(self.args.cali_data_path)
@@ -205,6 +234,7 @@ class Diffusion(object):
                         partitions.append((partition_data, partition_timesteps))
                     # Example of processing each partition
                     models=[qnn,qnn1,qnn2]
+                    logging.info(partitions)
                     for idx, (cali_xs, cali_ts) in enumerate(partitions):
                         qnn=models[idx]
                         logger.info(f"loaded partition: {idx}---------------------------------")
@@ -287,7 +317,7 @@ class Diffusion(object):
                                         m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
                                     else:
                                         m.zero_point = nn.Parameter(m.zero_point)
-                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun.pth"))
+                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun_n/a.pth"))
     
                 model=models[0]
                 if self.argsverbose:
