@@ -194,7 +194,6 @@ class Diffusion(object):
                         loaded_partition = checkpoint['dataset_partition']
                         
                         resume_cali_model(qnn, checkpoint_path,(partition_data[loaded_partition],partition_timesteps[loaded_partition]),resume_from_recon=True)
-                
 
                     else:
                         loaded_partition=0
@@ -221,8 +220,9 @@ class Diffusion(object):
                             """
                             Block reconstruction. For the first and last layers, we can only apply layer reconstruction.
                             """
-                            for idx_i, (name, module) in enumerate(model.named_children(), start=start_block):
-                                
+                            num_children = sum(1 for _ in model.named_children())
+                            for idx, (name, module) in enumerate(model.named_children(), start=start_block):
+                                logger.info(f"current running idx: ",idx,"out of ",num_children,"; module name: ",name)
                                 logger.info(f"{name} {isinstance(module, BaseQuantBlock)}")
                                 if isinstance(module, QuantModule):
                                     if module.ignore_reconstruction is True:
