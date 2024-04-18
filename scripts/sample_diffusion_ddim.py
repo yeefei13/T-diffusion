@@ -10,7 +10,7 @@ from torch.cuda import amp
 from pytorch_lightning import seed_everything
 
 import sys
-sys.path.append('C:/Users/yifei/OneDrive/桌面/T-diffusion')  # Replace with the path to where `ddim` directory is located.
+sys.path.append('C:/Users/17343/Desktop/q-diffusion')  # Replace with the path to where `ddim` directory is located.
 
 from ddim.models.diffusion import Model
 from ddim.datasets import inverse_data_transform
@@ -195,10 +195,11 @@ class Diffusion(object):
                         
                         # Store partitions (could also process directly here if desired)
                         partitions.append((partition_data, partition_timesteps))
-                    print(partitions)
-                    resume_cali_model(qnn, 'output/samples/2024-04-17-05-10-26/ckpt_0_smallrun.pth', partitions[0], args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn1, 'output/samples/2024-04-17-05-10-26/ckpt_0_smallrun.pth', partitions[1], args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn2, args.cali_ckpt, partitions[2], args.quant_act, "qdiff", cond=False)
+                    # print(partitions)
+                    resume_cali_model(qnn, 'output/samples/2024-04-16-19-48-35/ckpt_0.pth', partitions[0], args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn1, 'output/samples/2024-04-16-19-48-35/ckpt_1.pth', partitions[1], args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn2, 'output/samples/2024-04-16-19-48-35/ckpt_2.pth', partitions[2], args.quant_act, "qdiff", cond=False)
+                    models=[qnn,qnn1,qnn2]
                 else:
                     logger.info(f"Sampling data from {self.args.cali_st} timesteps for calibration")
                     sample_data = torch.load(self.args.cali_data_path)
@@ -317,14 +318,13 @@ class Diffusion(object):
                                         m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
                                     else:
                                         m.zero_point = nn.Parameter(m.zero_point)
-                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun_n/a.pth"))
+                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun.pth"))
     
-                model=models[0]
-                if self.argsverbose:
-                    logger.info("quantized model")
-                    logger.info(model)
+                model=models
                 for model in models:
                     model.eval()
+                    logger.info("quantized model")
+                    logger.info(model)
                 self.sample_fid(models)
             
 
