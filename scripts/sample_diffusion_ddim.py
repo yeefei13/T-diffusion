@@ -10,7 +10,7 @@ from torch.cuda import amp
 from pytorch_lightning import seed_everything
 
 import sys
-sys.path.append('C:/Users/17343/Desktop/q-diffusion')  # Replace with the path to where `ddim` directory is located.
+sys.path.append('C:/Users/yifei/OneDrive/桌面/T-diffusion')  # Replace with the path to where `ddim` directory is located.
 
 from ddim.models.diffusion import Model
 from ddim.datasets import inverse_data_transform
@@ -140,15 +140,18 @@ class Diffusion(object):
                 wq_params = {'n_bits': args.weight_bit, 'channel_wise': True, 'scale_method': 'max'}
                 aq_params = {'n_bits': args.act_bit, 'symmetric': args.a_sym, 'channel_wise': False, 'scale_method': 'max', 'leaf_param': args.quant_act}
                 
-                wq_params1 = {'n_bits': args.weight_bit/2, 'channel_wise': True, 'scale_method': 'max'}
-                aq_params1 = {'n_bits': args.act_bit/2, 'symmetric': args.a_sym, 'channel_wise': False, 'scale_method': 'max', 'leaf_param': args.quant_act}
+                wq_params1 = {'n_bits': args.weight_bit, 'channel_wise': True, 'scale_method': 'max'}
+                aq_params1 = {'n_bits': args.act_bit, 'symmetric': args.a_sym, 'channel_wise': False, 'scale_method': 'max', 'leaf_param': args.quant_act}
                      
                 if self.args.resume:
                     logger.info('Load with min-max quick initialization')
                     wq_params['scale_method'] = 'max'
                     aq_params['scale_method'] = 'max'
+                    wq_params1['scale_method'] = 'max'
+                    aq_params1['scale_method'] = 'max'
                 if self.args.resume_w:
                     wq_params['scale_method'] = 'max'
+                    wq_params1['scale_method'] = 'max'
                 qnn = QuantModel(
                     model=model, weight_quant_params=wq_params, act_quant_params=aq_params, 
                     sm_abit=self.args.sm_abit)
@@ -171,34 +174,10 @@ class Diffusion(object):
                     image_size = self.config.data.image_size
                     channels = self.config.data.channels
                     cali_data = (torch.randn(1, channels, image_size, image_size), torch.randint(0, 1000, (1,)))
-                    # Number of partitions
-                    cali_xs, cali_ts = cali_data
-                    x = 3
 
-                    # Calculate the number of samples per partition
-                    samples_per_partition = cali_xs.size(0) // x
-
-                    # List to hold each partition
-                    partitions = []
-
-                    # Split the dataset into x sections
-                    for i in range(x):
-                        start_idx = i * samples_per_partition
-                        if i == x - 1:
-                            # Ensure the last partition takes any remainder if not evenly divisible
-                            end_idx = cali_xs.size(0)
-                        else:
-                            end_idx = start_idx + samples_per_partition
-                        
-                        partition_data = cali_xs[start_idx:end_idx]
-                        partition_timesteps = cali_ts[start_idx:end_idx]
-                        
-                        # Store partitions (could also process directly here if desired)
-                        partitions.append((partition_data, partition_timesteps))
-                    # print(partitions)
-                    resume_cali_model(qnn, 'output/samples/2024-04-16-19-48-35/ckpt_0.pth', partitions[0], args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn1, 'output/samples/2024-04-16-19-48-35/ckpt_1.pth', partitions[1], args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn2, 'output/samples/2024-04-16-19-48-35/ckpt_2.pth', partitions[2], args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888/samples/2024-04-19-01-05-08/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn1, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888/samples/2024-04-19-01-05-08/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn2, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888/samples/2024-04-19-01-05-08/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
                     models=[qnn,qnn1,qnn2]
                 else:
                     logger.info(f"Sampling data from {self.args.cali_st} timesteps for calibration")
@@ -230,12 +209,17 @@ class Diffusion(object):
                         
                         partition_data = cali_xs[start_idx:end_idx]
                         partition_timesteps = cali_ts[start_idx:end_idx]
+                    
+
                         
                         # Store partitions (could also process directly here if desired)
                         partitions.append((partition_data, partition_timesteps))
                     # Example of processing each partition
                     models=[qnn,qnn1,qnn2]
                     logging.info(partitions)
+                    for idx, (cali_xs, cali_ts) in enumerate(partitions):
+                        print("this is partition: ",idx,"see ts: ",cali_ts)
+
                     for idx, (cali_xs, cali_ts) in enumerate(partitions):
                         qnn=models[idx]
                         logger.info(f"loaded partition: {idx}---------------------------------")
@@ -320,12 +304,13 @@ class Diffusion(object):
                                         m.zero_point = nn.Parameter(m.zero_point)
                         torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun.pth"))
     
+                # model=[models[2],models[1],models[0]]
                 model=models
-                for model in models:
-                    model.eval()
+                for m in model:
+                    m.eval()
                     logger.info("quantized model")
-                    logger.info(model)
-                self.sample_fid(models)
+                    logger.info(m)
+                self.sample_fid(model)
             
 
     def sample_fid(self, models):
@@ -505,7 +490,7 @@ def get_parser():
         help="quantization mode to use"
     )
     parser.add_argument(
-        "--max_images", type=int, default=20, help="number of images to sample"
+        "--max_images", type=int, default=500, help="number of images to sample"
     )
 
     # qdiff specific configs

@@ -16,7 +16,7 @@ def generalized_steps(x, seq, models, b, **kwargs):
         switch_model=len(seq)//3
         print(seq)
         model_idx=0
-        model=models[model_idx]
+        model=models[0]
         counter=0
         for i, j in zip(reversed(seq), reversed(seq_next)):
             print("using model,",model_idx,"at ts",counter)
