@@ -175,9 +175,9 @@ class Diffusion(object):
                     channels = self.config.data.channels
                     cali_data = (torch.randn(1, channels, image_size, image_size), torch.randint(0, 1000, (1,)))
 
-                    resume_cali_model(qnn, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888/samples/2024-04-19-01-05-08/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn1, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888/samples/2024-04-19-01-05-08/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn2, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888/samples/2024-04-19-01-05-08/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888_aug/samples/2024-04-20-02-08-26/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn1, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888_aug/samples/2024-04-20-02-08-26/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn2, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888_aug/samples/2024-04-20-02-08-26/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
                     models=[qnn,qnn1,qnn2]
                 else:
                     logger.info(f"Sampling data from {self.args.cali_st} timesteps for calibration")
@@ -188,17 +188,17 @@ class Diffusion(object):
                     logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape}")
 
                     cali_xs, cali_ts = cali_data
-                # ----------------------added code------------------------------------
+ # ----------------------added code------------------------------------
                     # Number of partitions
                     x = 3
 
                     # Calculate the number of samples per partition
                     samples_per_partition = cali_xs.size(0) // x
 
-                    # List to hold each partition
-                    partitions = []
+                    # List to hold initial splits
+                    initial_partitions = []
 
-                    # Split the dataset into x sections
+                    # First, create the initial partitions as you would normally
                     for i in range(x):
                         start_idx = i * samples_per_partition
                         if i == x - 1:
@@ -206,14 +206,38 @@ class Diffusion(object):
                             end_idx = cali_xs.size(0)
                         else:
                             end_idx = start_idx + samples_per_partition
-                        
+
                         partition_data = cali_xs[start_idx:end_idx]
                         partition_timesteps = cali_ts[start_idx:end_idx]
-                    
+                        initial_partitions.append((partition_data, partition_timesteps))
 
+                    # List to hold the final modified partitions
+                    partitions = []
+
+                    # Construct the new partitions with additional data from other partitions
+                    for i in range(x):
+                        # Start with all data from the current partition
+                        partition_data, partition_timesteps = initial_partitions[i]
+                        data_list = [partition_data]
+                        timestep_list = [partition_timesteps]
+
+                        # Add half of the data from every other partition
+                        for j in range(x):
+                            if i != j:
+                                other_data, other_timesteps = initial_partitions[j]
+                                # Determine the halfway point of the other partition
+                                half_point = other_data.size(0) // 2
+                                data_list.append(other_data[:half_point])
+                                timestep_list.append(other_timesteps[:half_point])
+
+                        # Concatenate all the selected data and timesteps for this partition
+                        full_partition_data = torch.cat(data_list, dim=0)
+                        full_partition_timesteps = torch.cat(timestep_list, dim=0)
+                        print(full_partition_timesteps)
                         
-                        # Store partitions (could also process directly here if desired)
-                        partitions.append((partition_data, partition_timesteps))
+                        # Store the new partition
+                        partitions.append((full_partition_data, full_partition_timesteps))
+
                     # Example of processing each partition
                     models=[qnn,qnn1,qnn2]
                     logging.info(partitions)
