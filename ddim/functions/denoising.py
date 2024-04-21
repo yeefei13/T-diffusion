@@ -14,10 +14,10 @@ def generalized_steps(x, seq, models, b, **kwargs):
         x0_preds = []
         xs = [x]
         switch_model=len(seq)//3
-        print(seq)
         model_idx=0
         model=models[0]
         counter=0
+        # print("Generating timeesteps: ",seq)
         for i, j in zip(reversed(seq), reversed(seq_next)):
             print("using model,",model_idx,"at ts",counter)
             if ((counter != 0)  and (counter % switch_model == 0)):

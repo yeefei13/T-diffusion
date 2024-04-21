@@ -174,10 +174,10 @@ class Diffusion(object):
                     image_size = self.config.data.image_size
                     channels = self.config.data.channels
                     cali_data = (torch.randn(1, channels, image_size, image_size), torch.randint(0, 1000, (1,)))
-
-                    resume_cali_model(qnn, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888_newaug/samples/2024-04-20-16-08-15/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn1, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888_newaug/samples/2024-04-20-16-08-15/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn2, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888_newaug/samples/2024-04-20-16-08-15/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    ini_path='C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888/samples/2024-04-21-00-07-11'
+                    resume_cali_model(qnn, ini_path+'/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn1, ini_path+'/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn2, ini_path+'/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
                     models=[qnn,qnn1,qnn2]
                 else:
                     logger.info(f"Sampling data from {self.args.cali_st} timesteps for calibration")
@@ -334,12 +334,12 @@ class Diffusion(object):
                                         m.zero_point = nn.Parameter(m.zero_point)
                         torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun.pth"))
     
-                # model=[models[2],models[1],models[0]]
-                model=models
+                model=[models[2],models[1],models[0]]
+                # model=models
                 for m in model:
                     m.eval()
                     logger.info("quantized model")
-                    logger.info(m)
+                    # logger.info(m)
                 self.sample_fid(model)
             
 
@@ -351,7 +351,7 @@ class Diffusion(object):
         n_rounds = math.ceil((total_n_samples - img_id) / config.sampling.batch_size)
         print("in sample_diffusion_ddiim, n_rounds:",n_rounds)
         print("n samples,",total_n_samples)
-        print("img_idx",img_id)
+        print("img_idx",img_id) 
         print("batch_size",config.sampling.batch_size)
 
         torch.manual_seed(self.args.seed)
@@ -415,6 +415,7 @@ class Diffusion(object):
             from ddim.functions.denoising import generalized_steps
 
             betas = self.betas
+            print("Generating ts: ",seq)
             xs = generalized_steps(
                 x, seq, model, betas, eta=self.args.eta, args=self.args)
             x = xs

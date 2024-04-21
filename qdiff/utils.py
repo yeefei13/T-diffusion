@@ -334,7 +334,7 @@ def get_train_samples(args, sample_data, custom_steps=None,start_step=0,end_step
         print("in get train samples, nstep: ",nsteps)
         assert(nsteps >= custom_steps)
         print(nsteps)
-        # timesteps = list(range(start_step, nsteps, nsteps//num_st))
+        # timesteps = list(range(0, nsteps, nsteps//num_st))
         timesteps = list(range(start_step, end_step, 2))
         print("see timestep",timesteps)
         logger.info(f'Selected {len(timesteps)} steps from {nsteps} sampling steps')
