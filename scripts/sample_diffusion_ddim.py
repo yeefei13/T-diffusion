@@ -175,74 +175,80 @@ class Diffusion(object):
                     channels = self.config.data.channels
                     cali_data = (torch.randn(1, channels, image_size, image_size), torch.randint(0, 1000, (1,)))
 
-                    resume_cali_model(qnn, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888_aug/samples/2024-04-20-02-08-26/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn1, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888_aug/samples/2024-04-20-02-08-26/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
-                    resume_cali_model(qnn2, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_50_iter_888_aug/samples/2024-04-20-02-08-26/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888_newaug/samples/2024-04-20-16-08-15/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn1, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888_newaug/samples/2024-04-20-16-08-15/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn2, 'C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888_newaug/samples/2024-04-20-16-08-15/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
                     models=[qnn,qnn1,qnn2]
                 else:
                     logger.info(f"Sampling data from {self.args.cali_st} timesteps for calibration")
                     sample_data = torch.load(self.args.cali_data_path)
-                    cali_data = get_train_samples(self.args, sample_data, custom_steps=0)
+                    cali_data = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=33)
+                    cali_data1 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=33,end_step=66)
+                    cali_data2 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=66,end_step=100)
                     del(sample_data)
                     gc.collect()
                     logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape}")
 
-                    cali_xs, cali_ts = cali_data
- # ----------------------added code------------------------------------
-                    # Number of partitions
-                    x = 3
+#                     cali_xs, cali_ts = cali_data
+#  # ----------------------added code------------------------------------
+#                     # Number of partitions
+#                     x = 3
 
-                    # Calculate the number of samples per partition
-                    samples_per_partition = cali_xs.size(0) // x
+#                     # Calculate the number of samples per partition
+#                     samples_per_partition = cali_xs.size(0) // x
 
-                    # List to hold initial splits
-                    initial_partitions = []
+#                     # List to hold initial splits
+#                     initial_partitions = []
 
-                    # First, create the initial partitions as you would normally
-                    for i in range(x):
-                        start_idx = i * samples_per_partition
-                        if i == x - 1:
-                            # Ensure the last partition takes any remainder if not evenly divisible
-                            end_idx = cali_xs.size(0)
-                        else:
-                            end_idx = start_idx + samples_per_partition
+#                     # First, create the initial partitions as you would normally
+#                     for i in range(x):
+#                         start_idx = i * samples_per_partition
+#                         if i == x - 1:
+#                             # Ensure the last partition takes any remainder if not evenly divisible
+#                             end_idx = cali_xs.size(0)
+#                         else:
+#                             end_idx = start_idx + samples_per_partition
 
-                        partition_data = cali_xs[start_idx:end_idx]
-                        partition_timesteps = cali_ts[start_idx:end_idx]
-                        initial_partitions.append((partition_data, partition_timesteps))
+#                         partition_data = cali_xs[start_idx:end_idx]
+#                         partition_timesteps = cali_ts[start_idx:end_idx]
+#                         initial_partitions.append((partition_data, partition_timesteps))
 
-                    # List to hold the final modified partitions
-                    partitions = []
+#                     # List to hold the final modified partitions
+#                     partitions = []
 
-                    # Construct the new partitions with additional data from other partitions
-                    for i in range(x):
-                        # Start with all data from the current partition
-                        partition_data, partition_timesteps = initial_partitions[i]
-                        data_list = [partition_data]
-                        timestep_list = [partition_timesteps]
+#                     # Construct the new partitions with additional data from other partitions
+#                     for i in range(x):
+#                         # Start with all data from the current partition
+#                         partition_data, partition_timesteps = initial_partitions[i]
+#                         data_list = [partition_data]
+#                         timestep_list = [partition_timesteps]
 
-                        # Add half of the data from every other partition
-                        for j in range(x):
-                            if i != j:
-                                other_data, other_timesteps = initial_partitions[j]
-                                # Determine the halfway point of the other partition
-                                half_point = other_data.size(0) // 2
-                                data_list.append(other_data[:half_point])
-                                timestep_list.append(other_timesteps[:half_point])
+#                         # Add half of the data from every other partition
+#                         for j in range(x):
+#                             if i != j:
+#                                 other_data, other_timesteps = initial_partitions[j]
+#                                 # Determine the halfway point of the other partition
+#                                 half_point = other_data.size(0) // 2
+#                                 data_list.append(other_data[:half_point])
+#                                 timestep_list.append(other_timesteps[:half_point])
 
-                        # Concatenate all the selected data and timesteps for this partition
-                        full_partition_data = torch.cat(data_list, dim=0)
-                        full_partition_timesteps = torch.cat(timestep_list, dim=0)
-                        print(full_partition_timesteps)
+#                         # Concatenate all the selected data and timesteps for this partition
+#                         full_partition_data = torch.cat(data_list, dim=0)
+#                         full_partition_timesteps = torch.cat(timestep_list, dim=0)
+#                         print(full_partition_timesteps)
                         
-                        # Store the new partition
-                        partitions.append((full_partition_data, full_partition_timesteps))
+#                         # Store the new partition
+#                         partitions.append((full_partition_data, full_partition_timesteps))
 
-                    # Example of processing each partition
+                    # # Example of processing each partition
                     models=[qnn,qnn1,qnn2]
-                    logging.info(partitions)
-                    for idx, (cali_xs, cali_ts) in enumerate(partitions):
-                        print("this is partition: ",idx,"see ts: ",cali_ts)
+                    # logging.info(partitions)
+                    # for idx, (cali_xs, cali_ts) in enumerate(partitions):
+                    #     print("this is partition: ",idx,"see ts: ",cali_ts)
+                    partitions=[cali_data,cali_data1,cali_data2]
+
+                    for i,j in partitions:
+                        print("ts sampled: ",j)
 
                     for idx, (cali_xs, cali_ts) in enumerate(partitions):
                         qnn=models[idx]

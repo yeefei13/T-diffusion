@@ -322,7 +322,7 @@ def quantize_model_till(model: QuantModule, layer: Union[QuantModule, BaseQuantB
             break
 
 
-def get_train_samples(args, sample_data, custom_steps=None):
+def get_train_samples(args, sample_data, custom_steps=None,start_step=0,end_step=100):
     num_samples, num_st = args.cali_n, args.cali_st
     custom_steps = args.custom_steps if custom_steps is None else custom_steps
     if num_st == 1:
@@ -333,7 +333,9 @@ def get_train_samples(args, sample_data, custom_steps=None):
         nsteps = len(sample_data["ts"])
         print("in get train samples, nstep: ",nsteps)
         assert(nsteps >= custom_steps)
-        timesteps = list(range(0, nsteps, nsteps//num_st))
+        print(nsteps)
+        # timesteps = list(range(start_step, nsteps, nsteps//num_st))
+        timesteps = list(range(start_step, end_step, 2))
         print("see timestep",timesteps)
         logger.info(f'Selected {len(timesteps)} steps from {nsteps} sampling steps')
         xs_lst = [sample_data["xs"][i][:num_samples] for i in timesteps]
