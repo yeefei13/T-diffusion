@@ -174,7 +174,7 @@ class Diffusion(object):
                     image_size = self.config.data.image_size
                     channels = self.config.data.channels
                     cali_data = (torch.randn(1, channels, image_size, image_size), torch.randint(0, 1000, (1,)))
-                    ini_path='C:/Users/yifei/OneDrive/桌面/T-diffusion/output_smallmodel_888/samples/2024-04-21-00-07-11'
+                    ini_path="""C:/Users/yifei/OneDrive/桌面/T-diffusion/output_w4a8_1000iter_128calin_newversion/samples/2024-04-21-17-39-47"""
                     resume_cali_model(qnn, ini_path+'/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
                     resume_cali_model(qnn1, ini_path+'/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
                     resume_cali_model(qnn2, ini_path+'/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
@@ -185,6 +185,7 @@ class Diffusion(object):
                     cali_data = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=33)
                     cali_data1 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=33,end_step=66)
                     cali_data2 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=66,end_step=100)
+                    cali_data_all = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=100)
                     del(sample_data)
                     gc.collect()
                     logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape}")
@@ -259,11 +260,12 @@ class Diffusion(object):
                         else:
                             logger.info("Initializing weight quantization parameters")
                             qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
-                            _ = qnn(cali_xs[:8].cuda(), cali_ts[:8].cuda())
+                            xs,ts=cali_data_all
+                            _ = qnn(xs[:8].cuda(), ts[:8].cuda())
                             logger.info("Initializing has done!")
-
+                        cali_data=partitions[idx]
                         # Kwargs for weight rounding calibration
-                        kwargs = dict(cali_data=cali_data, batch_size=self.args.cali_batch_size, 
+                        kwargs = dict(cali_data=cali_data_all, batch_size=self.args.cali_batch_size, 
                                     iters=self.args.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                                     warmup=0.2, act_quant=False, opt_mode='mse')
                         def recon_model(model):
@@ -334,8 +336,8 @@ class Diffusion(object):
                                         m.zero_point = nn.Parameter(m.zero_point)
                         torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun.pth"))
     
-                model=[models[2],models[1],models[0]]
-                # model=models
+                # model=[models[2],models[1],models[0]]
+                model=models
                 for m in model:
                     m.eval()
                     logger.info("quantized model")
