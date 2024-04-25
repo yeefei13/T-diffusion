@@ -7,13 +7,25 @@ def compute_alpha(beta, t):
     return a
 
 
-def generalized_steps(x, seq, model, b, **kwargs):
+def generalized_steps(x, seq, models, b, **kwargs):
     with torch.no_grad():
         n = x.size(0)
         seq_next = [-1] + list(seq[:-1])
         x0_preds = []
         xs = [x]
+        switch_model=len(seq)//3
+        model_idx=0
+        model=models[0]
+        counter=0
+        # print("Generating timeesteps: ",seq)
         for i, j in zip(reversed(seq), reversed(seq_next)):
+            print("using model,",model_idx,"at ts",counter)
+            if ((counter != 0)  and (counter % switch_model == 0)):
+                model_idx+=1
+                if model_idx == 3:
+                    model_idx=2
+                model=models[model_idx]
+            counter+=1
             t = (torch.ones(n) * i).to(x.device)
             next_t = (torch.ones(n) * j).to(x.device)
             at = compute_alpha(b, t.long())

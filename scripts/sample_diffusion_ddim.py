@@ -10,7 +10,7 @@ from torch.cuda import amp
 from pytorch_lightning import seed_everything
 
 import sys
-sys.path.append('/home/hice1/ywang4343/scratch/q-diffusion')  # Replace with the path to where `ddim` directory is located.
+sys.path.append('C:/Users/yifei/OneDrive/桌面/T-diffusion')  # Replace with the path to where `ddim` directory is located.
 
 from ddim.models.diffusion import Model
 from ddim.datasets import inverse_data_transform
@@ -112,6 +112,8 @@ class Diffusion(object):
 
     def sample(self):
         model = Model(self.config)
+        model1 = Model(self.config)
+        model2 = Model(self.config)
 
         # This used the pretrained DDPM model, see https://github.com/pesser/pytorch_diffusion
         if self.config.data.dataset == "CIFAR10":
@@ -123,106 +125,155 @@ class Diffusion(object):
         ckpt = get_ckpt_path(f"ema_{name}")
         logger.info("Loading checkpoint {}".format(ckpt))
         model.load_state_dict(torch.load(ckpt, map_location=self.device))
+        model1.load_state_dict(torch.load(ckpt, map_location=self.device))
+        model2.load_state_dict(torch.load(ckpt, map_location=self.device))
         
         model.to(self.device)
         model.eval()
+        model1.to(self.device)
+        model1.eval()
+        model2.to(self.device)
+        model2.eval()
         assert(self.args.cond == False)
         if self.args.ptq:
             if self.args.quant_mode == 'qdiff':
                 wq_params = {'n_bits': args.weight_bit, 'channel_wise': True, 'scale_method': 'max'}
                 aq_params = {'n_bits': args.act_bit, 'symmetric': args.a_sym, 'channel_wise': False, 'scale_method': 'max', 'leaf_param': args.quant_act}
+                
+                wq_params1 = {'n_bits': args.weight_bit, 'channel_wise': True, 'scale_method': 'max'}
+                aq_params1 = {'n_bits': args.act_bit, 'symmetric': args.a_sym, 'channel_wise': False, 'scale_method': 'max', 'leaf_param': args.quant_act}
+                     
                 if self.args.resume:
                     logger.info('Load with min-max quick initialization')
                     wq_params['scale_method'] = 'max'
                     aq_params['scale_method'] = 'max'
+                    wq_params1['scale_method'] = 'max'
+                    aq_params1['scale_method'] = 'max'
                 if self.args.resume_w:
                     wq_params['scale_method'] = 'max'
+                    wq_params1['scale_method'] = 'max'
                 qnn = QuantModel(
                     model=model, weight_quant_params=wq_params, act_quant_params=aq_params, 
                     sm_abit=self.args.sm_abit)
                 qnn.to(self.device)
                 qnn.eval()
 
+                qnn1 = QuantModel(
+                    model=model1, weight_quant_params=wq_params1, act_quant_params=aq_params1, 
+                    sm_abit=self.args.sm_abit)
+                qnn1.to(self.device)
+                qnn1.eval()
+                
+                qnn2 = QuantModel(
+                    model=model2, weight_quant_params=wq_params, act_quant_params=aq_params, 
+                    sm_abit=self.args.sm_abit)
+                qnn2.to(self.device)
+                qnn2.eval()
+
                 if self.args.resume:
                     image_size = self.config.data.image_size
                     channels = self.config.data.channels
                     cali_data = (torch.randn(1, channels, image_size, image_size), torch.randint(0, 1000, (1,)))
-                    resume_cali_model(qnn, args.cali_ckpt, cali_data, args.quant_act, "qdiff", cond=False)
+                    ini_path="""C:/Users/yifei/OneDrive/桌面/T-diffusion/output_w4a8_1000iter_128calin_newversion/samples/2024-04-21-17-39-47"""
+                    resume_cali_model(qnn, ini_path+'/ckpt_0_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn1, ini_path+'/ckpt_1_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    resume_cali_model(qnn2, ini_path+'/ckpt_2_smallrun.pth', cali_data, args.quant_act, "qdiff", cond=False)
+                    models=[qnn,qnn1,qnn2]
                 else:
                     logger.info(f"Sampling data from {self.args.cali_st} timesteps for calibration")
                     sample_data = torch.load(self.args.cali_data_path)
-                    cali_data = get_train_samples(self.args, sample_data, custom_steps=0)
+                    cali_data = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=33)
+                    cali_data1 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=33,end_step=66)
+                    cali_data2 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=66,end_step=100)
+                    cali_data_all = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=100,step_size=5)
                     del(sample_data)
                     gc.collect()
                     logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape}")
 
-                    cali_xs, cali_ts = cali_data
-                # ----------------------added code------------------------------------
-                    # Number of partitions
-                    x = 3
+#                     cali_xs, cali_ts = cali_data
+#  # ----------------------added code------------------------------------
+#                     # Number of partitions
+#                     x = 3
 
-                    # Calculate the number of samples per partition
-                    samples_per_partition = cali_xs.size(0) // x
+#                     # Calculate the number of samples per partition
+#                     samples_per_partition = cali_xs.size(0) // x
 
-                    # List to hold each partition
-                    partitions = []
+#                     # List to hold initial splits
+#                     initial_partitions = []
 
-                    # Split the dataset into x sections
-                    for i in range(x):
-                        start_idx = i * samples_per_partition
-                        if i == x - 1:
-                            # Ensure the last partition takes any remainder if not evenly divisible
-                            end_idx = cali_xs.size(0)
-                        else:
-                            end_idx = start_idx + samples_per_partition
+#                     # First, create the initial partitions as you would normally
+#                     for i in range(x):
+#                         start_idx = i * samples_per_partition
+#                         if i == x - 1:
+#                             # Ensure the last partition takes any remainder if not evenly divisible
+#                             end_idx = cali_xs.size(0)
+#                         else:
+#                             end_idx = start_idx + samples_per_partition
+
+#                         partition_data = cali_xs[start_idx:end_idx]
+#                         partition_timesteps = cali_ts[start_idx:end_idx]
+#                         initial_partitions.append((partition_data, partition_timesteps))
+
+#                     # List to hold the final modified partitions
+#                     partitions = []
+
+#                     # Construct the new partitions with additional data from other partitions
+#                     for i in range(x):
+#                         # Start with all data from the current partition
+#                         partition_data, partition_timesteps = initial_partitions[i]
+#                         data_list = [partition_data]
+#                         timestep_list = [partition_timesteps]
+
+#                         # Add half of the data from every other partition
+#                         for j in range(x):
+#                             if i != j:
+#                                 other_data, other_timesteps = initial_partitions[j]
+#                                 # Determine the halfway point of the other partition
+#                                 half_point = other_data.size(0) // 2
+#                                 data_list.append(other_data[:half_point])
+#                                 timestep_list.append(other_timesteps[:half_point])
+
+#                         # Concatenate all the selected data and timesteps for this partition
+#                         full_partition_data = torch.cat(data_list, dim=0)
+#                         full_partition_timesteps = torch.cat(timestep_list, dim=0)
+#                         print(full_partition_timesteps)
                         
-                        partition_data = cali_xs[start_idx:end_idx]
-                        partition_timesteps = cali_ts[start_idx:end_idx]
-                        
-                        # Store partitions (could also process directly here if desired)
-                        partitions.append((partition_data, partition_timesteps))
-                    import os
-                    checkpoint_dir='recon_checkpoint_dir'
-                    os.makedirs(checkpoint_dir, exist_ok=True)
-                    checkpoint_path = os.path.join(checkpoint_dir, "recon_checkpoint.pth.tar")
+#                         # Store the new partition
+#                         partitions.append((full_partition_data, full_partition_timesteps))
 
-                    # Check if there's a checkpoint available
-                    if os.path.exists(checkpoint_path):
-                        
-                        checkpoint = self.load_checkpoint(checkpoint_path)
-                        checkpoint['dataset_partition']=0
-                        loaded_partition = checkpoint['dataset_partition']
-                        
-                        resume_cali_model(qnn, checkpoint_path,(partition_data[loaded_partition],partition_timesteps[loaded_partition]),resume_from_recon=True)
+                    # # Example of processing each partition
+                    models=[qnn,qnn1,qnn2]
+                    # logging.info(partitions)
+                    # for idx, (cali_xs, cali_ts) in enumerate(partitions):
+                    #     print("this is partition: ",idx,"see ts: ",cali_ts)
+                    partitions=[cali_data,cali_data1,cali_data2]
 
-                    else:
-                        loaded_partition=0
-                        start_block = 0
-                    # Example of processing each partition
-                    for idx, (cali_xs, cali_ts) in enumerate(partitions,start=loaded_partition):
-                        logger.info("partitioned data idx: ",idx)
-                        logger.info("cali data size: ",cali_xs.shape,cali_ts.shape)
+                    for i,j in partitions:
+                        print("ts sampled: ",j)
+
+                    for idx, (cali_xs, cali_ts) in enumerate(partitions):
+                        qnn=models[idx]
+                        logger.info(f"loaded partition: {idx}---------------------------------")
                 # ----------------------added code end here------------------------------------
                         if self.args.resume_w:
                             resume_cali_model(qnn, self.args.cali_ckpt, cali_data, False, cond=False)
                         else:
                             logger.info("Initializing weight quantization parameters")
                             qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
+                            # xs,ts=cali_data_all
                             _ = qnn(cali_xs[:8].cuda(), cali_ts[:8].cuda())
                             logger.info("Initializing has done!")
-
+                        cali_data=partitions[idx]
                         # Kwargs for weight rounding calibration
                         kwargs = dict(cali_data=cali_data, batch_size=self.args.cali_batch_size, 
                                     iters=self.args.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                                     warmup=0.2, act_quant=False, opt_mode='mse')
-
                         def recon_model(model):
                             """
                             Block reconstruction. For the first and last layers, we can only apply layer reconstruction.
                             """
-                            num_children = sum(1 for _ in model.named_children())
-                            for idx, (name, module) in enumerate(model.named_children(), start=start_block):
-                                logger.info(f"current running idx: ",idx,"out of ",num_children,"; module name: ",name)
+                            
+                            for idx_1, (name, module) in enumerate(model.named_children()):
                                 logger.info(f"{name} {isinstance(module, BaseQuantBlock)}")
                                 if isinstance(module, QuantModule):
                                     if module.ignore_reconstruction is True:
@@ -240,12 +291,6 @@ class Diffusion(object):
                                         block_reconstruction(qnn, module, **kwargs)
                                 else:
                                     recon_model(module)
-                                            # Save checkpoint
-                                self.save_checkpoint({
-                                    'model_state': model.state_dict(),
-                                    'start_block': idx_i + 1,  # next block to start from
-                                    'dataset_partition':idx
-                                }, checkpoint_path=checkpoint_path)
 
                         if not self.args.resume_w:
                             logger.info("Doing weight calibration")
@@ -289,20 +334,18 @@ class Diffusion(object):
                                         m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
                                     else:
                                         m.zero_point = nn.Parameter(m.zero_point)
-                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}.pth"))
+                        torch.save(qnn.state_dict(), os.path.join(self.args.logdir, f"ckpt_{idx}_smallrun.pth"))
+    
+                # model=[models[2],models[1],models[0]]
+                model=models
+                for m in model:
+                    m.eval()
+                    logger.info("quantized model")
+                    # logger.info(m)
+                self.sample_fid(model)
+            
 
-                model = qnn
-
-        model.to(self.device)
-        if self.args.verbose:
-            logger.info("quantized model")
-            logger.info(model)
-
-        model.eval()
-        self.sample_fid(model)
-        
-
-    def sample_fid(self, model):
+    def sample_fid(self, models):
         config = self.config
         img_id = len(glob.glob(f"{self.args.image_folder}/*"))
         logger.info(f"starting from image {img_id}")
@@ -310,7 +353,7 @@ class Diffusion(object):
         n_rounds = math.ceil((total_n_samples - img_id) / config.sampling.batch_size)
         print("in sample_diffusion_ddiim, n_rounds:",n_rounds)
         print("n samples,",total_n_samples)
-        print("img_idx",img_id)
+        print("img_idx",img_id) 
         print("batch_size",config.sampling.batch_size)
 
         torch.manual_seed(self.args.seed)
@@ -330,7 +373,7 @@ class Diffusion(object):
                 )
 
                 with amp.autocast(enabled=False):
-                    x = self.sample_image(x, model,img_id,n_rounds)
+                    x = self.sample_image(x, models,img_id,n_rounds)
                 x = inverse_data_transform(config, x)
 
                 if img_id + x.shape[0] > self.args.max_images:
@@ -374,6 +417,7 @@ class Diffusion(object):
             from ddim.functions.denoising import generalized_steps
 
             betas = self.betas
+            print("Generating ts: ",seq)
             xs = generalized_steps(
                 x, seq, model, betas, eta=self.args.eta, args=self.args)
             x = xs
@@ -479,7 +523,7 @@ def get_parser():
         help="quantization mode to use"
     )
     parser.add_argument(
-        "--max_images", type=int, default=20, help="number of images to sample"
+        "--max_images", type=int, default=500, help="number of images to sample"
     )
 
     # qdiff specific configs
