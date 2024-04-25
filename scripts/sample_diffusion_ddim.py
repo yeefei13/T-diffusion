@@ -185,7 +185,7 @@ class Diffusion(object):
                     cali_data = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=33)
                     cali_data1 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=33,end_step=66)
                     cali_data2 = get_train_samples(self.args, sample_data, custom_steps=0,start_step=66,end_step=100)
-                    cali_data_all = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=100)
+                    cali_data_all = get_train_samples(self.args, sample_data, custom_steps=0,start_step=0,end_step=100,step_size=5)
                     del(sample_data)
                     gc.collect()
                     logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape}")
@@ -260,12 +260,12 @@ class Diffusion(object):
                         else:
                             logger.info("Initializing weight quantization parameters")
                             qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
-                            xs,ts=cali_data_all
-                            _ = qnn(xs[:8].cuda(), ts[:8].cuda())
+                            # xs,ts=cali_data_all
+                            _ = qnn(cali_xs[:8].cuda(), cali_ts[:8].cuda())
                             logger.info("Initializing has done!")
                         cali_data=partitions[idx]
                         # Kwargs for weight rounding calibration
-                        kwargs = dict(cali_data=cali_data_all, batch_size=self.args.cali_batch_size, 
+                        kwargs = dict(cali_data=cali_data, batch_size=self.args.cali_batch_size, 
                                     iters=self.args.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                                     warmup=0.2, act_quant=False, opt_mode='mse')
                         def recon_model(model):
