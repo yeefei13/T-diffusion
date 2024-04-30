@@ -1,5 +1,5 @@
 
-# Multi Model Q-Diffusion
+# Multi Model Effictive DM
 
 Multimodel Q-diffusion is a post quantization project inpired by Q-Diffusion(https://github.com/Xiuyu-Li/q-diffusion/tree/master)
 
